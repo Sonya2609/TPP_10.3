@@ -12,8 +12,10 @@ def create(notes):
   print('Введите текст для заметки:')
   notes.append(input())
   print('Заметка добавлена')
+  return notes
 
 def delete(notes):
+  show(notes)
   print('Введите номер заметки, которую надо удалить:')
   index = int(input())
   if 0 <= index < len(notes):
@@ -29,7 +31,7 @@ def search(notes):
   if not found_notes:
     print("Заметка не найдена.")
   else:
-    print("Найденные заметки:")
+    print("Найденная заметка:")
     for i, note in enumerate(found_notes):
       print(f"{i + 1}. {note}")
 
