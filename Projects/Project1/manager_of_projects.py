@@ -15,11 +15,10 @@ def create(notes):
   return notes
 
 def delete(notes):
-  show(notes)
   print('Введите номер заметки, которую надо удалить:')
   index = int(input())
   if 0 <= index < len(notes):
-    del notes[index]
+    del notes[index-1]
     print("Заметка удалена.")
   else:
     print("Неверный номер заметки.")
@@ -27,7 +26,7 @@ def delete(notes):
 
 def search(notes):
   print('Введите заметку(ключевое слово) для поиска:')
-  found_notes = [note for note in notes if input() in note]
+  found_notes = [note for note in notes if input().lower() in note.lower()]
   if not found_notes:
     print("Заметка не найдена.")
   else:
@@ -49,7 +48,7 @@ def show(notes):
 
 #интерфейс
 def interface():
-  with open('memory.txt', "r+") as f:
+  with open('/content/memory.txt', "r+") as f:
     notes = [line.strip() for line in f]
   print('Здравствуй, пользователь! Это менеджер твоих заметок.')
   while True:
@@ -75,3 +74,5 @@ def interface():
       case _:
         print('Введены некорректные данные')
         continue
+
+interface()
