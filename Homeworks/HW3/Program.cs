@@ -29,16 +29,16 @@ class Polynomial
 
     public override string ToString()
     {
-        if (this.coeffs.Length == 0){ return "0"; }
-        string res = ""; 
+        if (this.coeffs.Length == 0) { return "0"; }
+        string res = "";
         for (int i = 0; i < this.coeffs.Length; i++)
         {
             if (this.coeffs[i] == 0) { continue; }
-            if (i==0){ res += this.coeffs[i]; }
+            if (i == 0) { res += this.coeffs[i]; }
             else if (i == 1)
             {
                 res += this.coeffs[i] < 0 ? "-" : "+";
-                res += Math.Abs(this.coeffs[i]).ToString() + "x";
+                res += this.coeffs[i] == 1 ? "x" : Math.Abs(this.coeffs[i]).ToString() + "x";
             }
             else
             {
@@ -46,23 +46,24 @@ class Polynomial
                 res += Math.Abs(this.coeffs[i]).ToString() + "x^" + i;
             }
         }
-        /*
-        *Метод должен возвращать строковое представление многочлена.
-        * 
-        * Например, если коэффициенты: { 1.0, 0.0, 2.0 },
-        * то многочлен имеет вид:
-        *     P(x) = 1 + 2x^2
-        * 
-        * Правила форматирования:
-        *  - Пропускать члены, у которых коэффициент равен 0.
-        *  - Если коэффициент положительный и это не первый член — добавлять " + ".
-        *  - Если отрицательный — добавлять " - " и брать модуль коэффициента.
-        *  - Для x^1 писать просто "x", для x^0 — только число.
-        * 
-        * Пример вывода:
-        *     "1 + 2x^2"
-        */
         return res;
+    }
+    
+    public static Polynomial operator + (Polynomial obj1, Polynomial obj2)
+    {
+        double[] resCoeffs = new double[Math.Max(obj1.Degree, obj2.Degree) + 1];
+        for (int i = 0; i < resCoeffs.Length; i++)
+        {
+            double coeff1 = obj1.Coeffs[i];
+            double coeff2 = obj2.Coeffs[i];
+            resCoeffs[i] = coeff1 + coeff2;
+        }
+        return new Polynomial(resCoeffs);
+    }
+    
+    public static Polynomial operator * (Polynomial obj1, double k)
+    {
+        return obj1;
     }
 }
 
@@ -70,10 +71,15 @@ class Programm
 {
     static void Main(string[] args)
     {
-        Console.WriteLine("Hello World");
-        double[] coeffs = { 1.0, 0.0, 2.0 };
-        Polynomial p = new Polynomial(coeffs); // 1 + 2x^2
-
+        double[] coeffs1 = { 1.0, 0.0, 2.0 };
+        Polynomial p = new Polynomial(coeffs1); // 1 + 2x^2
         Console.WriteLine(p);
+
+        double[] coeffs2 = { 2.0, 1.0, 0.0, -4.0 };
+        Polynomial n = new Polynomial(coeffs2); // 2 + x - 4x^3
+        Console.WriteLine(n);
+
+        Polynomial sum = p + n;
+        Console.WriteLine(sum); // 3 + x + 2x^2 - 4x^3
     }
 }
