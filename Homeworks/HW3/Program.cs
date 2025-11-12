@@ -54,8 +54,8 @@ class Polynomial
         double[] resCoeffs = new double[Math.Max(obj1.Degree, obj2.Degree) + 1];
         for (int i = 0; i < resCoeffs.Length; i++)
         {
-            double coeff1 = obj1.Coeffs[i];
-            double coeff2 = obj2.Coeffs[i];
+            double coeff1 = obj1.degree>=i? obj1.Coeffs[i]: 0.0;
+            double coeff2 = obj2.degree>=i? obj2.Coeffs[i]: 0.0;
             resCoeffs[i] = coeff1 + coeff2;
         }
         return new Polynomial(resCoeffs);
