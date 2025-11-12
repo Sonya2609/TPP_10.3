@@ -63,7 +63,12 @@ class Polynomial
     
     public static Polynomial operator * (Polynomial obj1, double k)
     {
-        return obj1;
+        double[] resCoeffs = new double[obj1.Degree + 1];
+        for (int i = 0; i < resCoeffs.Length; i++)
+        {
+            resCoeffs[i] = obj1.Coeffs[i] * k;
+        }
+        return new Polynomial(resCoeffs);
     }
 }
 
@@ -81,5 +86,8 @@ class Programm
 
         Polynomial sum = p + n;
         Console.WriteLine(sum); // 3 + x + 2x^2 - 4x^3
+
+        Polynomial multipl = sum*4.0;
+        Console.WriteLine(multipl); // 12 + 4x + 8x^2 - 16x^3
     }
 }
