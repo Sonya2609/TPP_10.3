@@ -48,27 +48,52 @@ class Polynomial
         }
         return res;
     }
-    
-    public static Polynomial operator + (Polynomial obj1, Polynomial obj2)
+
+    public static Polynomial operator +(Polynomial obj1, Polynomial obj2)
     {
         double[] resCoeffs = new double[Math.Max(obj1.Degree, obj2.Degree) + 1];
         for (int i = 0; i < resCoeffs.Length; i++)
         {
-            double coeff1 = obj1.degree>=i? obj1.Coeffs[i]: 0.0;
-            double coeff2 = obj2.degree>=i? obj2.Coeffs[i]: 0.0;
+            double coeff1 = obj1.degree >= i ? obj1.Coeffs[i] : 0.0;
+            double coeff2 = obj2.degree >= i ? obj2.Coeffs[i] : 0.0;
             resCoeffs[i] = coeff1 + coeff2;
         }
         return new Polynomial(resCoeffs);
     }
-    
-    public static Polynomial operator * (Polynomial obj1, double k)
+
+    public static Polynomial operator *(Polynomial obj, double k)
     {
-        double[] resCoeffs = new double[obj1.Degree + 1];
+        double[] resCoeffs = new double[obj.Degree + 1];
         for (int i = 0; i < resCoeffs.Length; i++)
         {
-            resCoeffs[i] = obj1.Coeffs[i] * k;
+            resCoeffs[i] = obj.Coeffs[i] * k;
         }
         return new Polynomial(resCoeffs);
+    }
+    public static Polynomial operator *(double k, Polynomial obj)
+    {
+        return obj*k;
+    }
+    public static Polynomial operator *(Polynomial obj1, Polynomial obj2)
+    {
+        double[] resCoeffs = new double[obj1.Degree + obj2.Degree+1];
+        for (int i = 0; i < obj1.coeffs.Length; i++)
+        {
+            for (int j = 0; j < obj2.coeffs.Length; j++)
+            {
+                resCoeffs[i+j] = obj1.Coeffs[i] * obj2.Coeffs[j];
+            }
+        }
+        return new Polynomial(resCoeffs);
+    }
+    public double Evaluate(double x)
+    {
+        double result = 0.0;
+        for(int i= 0;i< this.coeffs.Length; i++)
+        {
+            result += this.coeffs[i]*Math.Pow(x,i);
+        }
+        return result;
     }
 }
 
@@ -87,7 +112,11 @@ class Programm
         Polynomial sum = p + n;
         Console.WriteLine(sum); // 3 + x + 2x^2 - 4x^3
 
-        Polynomial multipl = sum*4.0;
+        Polynomial multipl = 4.0 * sum;
         Console.WriteLine(multipl); // 12 + 4x + 8x^2 - 16x^3
+
+        Console.WriteLine(p*n); // 3 + x + - 4x^2 - 2x^3 - 8x^5
+
+        Console.WriteLine(multipl.Evaluate(2.0)); // -76
     }
 }
