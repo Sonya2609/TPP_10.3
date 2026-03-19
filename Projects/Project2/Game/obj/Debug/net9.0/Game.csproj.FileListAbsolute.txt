@@ -1,0 +1,15 @@
+C:\Users\user\Desktop\ТПП\Projects\Project2\Game\bin\Debug\net9.0\Game.exe
+C:\Users\user\Desktop\ТПП\Projects\Project2\Game\bin\Debug\net9.0\Game.deps.json
+C:\Users\user\Desktop\ТПП\Projects\Project2\Game\bin\Debug\net9.0\Game.runtimeconfig.json
+C:\Users\user\Desktop\ТПП\Projects\Project2\Game\bin\Debug\net9.0\Game.dll
+C:\Users\user\Desktop\ТПП\Projects\Project2\Game\bin\Debug\net9.0\Game.pdb
+C:\Users\user\Desktop\ТПП\Projects\Project2\Game\obj\Debug\net9.0\Game.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\user\Desktop\ТПП\Projects\Project2\Game\obj\Debug\net9.0\Game.AssemblyInfoInputs.cache
+C:\Users\user\Desktop\ТПП\Projects\Project2\Game\obj\Debug\net9.0\Game.AssemblyInfo.cs
+C:\Users\user\Desktop\ТПП\Projects\Project2\Game\obj\Debug\net9.0\Game.csproj.CoreCompileInputs.cache
+C:\Users\user\Desktop\ТПП\Projects\Project2\Game\obj\Debug\net9.0\Game.sourcelink.json
+C:\Users\user\Desktop\ТПП\Projects\Project2\Game\obj\Debug\net9.0\Game.dll
+C:\Users\user\Desktop\ТПП\Projects\Project2\Game\obj\Debug\net9.0\refint\Game.dll
+C:\Users\user\Desktop\ТПП\Projects\Project2\Game\obj\Debug\net9.0\Game.pdb
+C:\Users\user\Desktop\ТПП\Projects\Project2\Game\obj\Debug\net9.0\Game.genruntimeconfig.cache
+C:\Users\user\Desktop\ТПП\Projects\Project2\Game\obj\Debug\net9.0\ref\Game.dll
