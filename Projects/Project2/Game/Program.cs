@@ -1,7 +1,139 @@
 ﻿using System;
 namespace Project
 {
-    public class GameState // Состояние игры
+    #region Interfaces
+    public interface ICommand // интерфейс команды пользователя
+    {
+        void Execute(Game game, string args);
+        string Name { get; }
+        string Description { get; }
+    }
+
+    public interface IInteractable // интерфейс всех объектов, с которыми можно взаимодействовать в мире
+    {
+        string GetName();
+        string GetDescription();
+        void Interact(GameState state);
+    }
+
+    public interface ICondition // интерфейс условия для проверки состояния игры
+    {
+        bool IsMet(GameState state);
+    }
+
+    public interface IEffect // интерфейс эффекта, изменяющего состояние игры
+    {
+        void Apply(GameState state);
+    }
+
+    #endregion
+    #region Abstract Classes
+
+    public abstract class CommandBase : ICommand
+    {
+        private string name; // Имя команды
+        private string description; // Описание команды
+        protected CommandBase(string name, string description)
+        {
+            this.name = name;
+            this.description = description;
+        }
+        public string Name { get{ return name; } }
+        public string Description { get{ return description; } }
+        public abstract void Execute(Game game, string args);
+        protected bool IsGameActive(GameState state)
+        {
+            return state.Health > 0 && !state.IsGameOver;
+        }
+        protected void PrintError(string message)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"Ошибка: {message}");
+            Console.ResetColor();
+        }
+        protected void PrintSuccess(string message)
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine(message);
+            Console.ResetColor();
+        }
+    }
+
+    public abstract class ConditionBase : ICondition
+    {
+        private string description;
+        protected ConditionBase(string description)
+        {
+            this.description = description;
+        }
+        public string Description { get{ return description; } }
+        public abstract bool IsMet(GameState state);
+        public override string ToString() { return $"Condition: {Description}"; }
+    }
+
+    public abstract class EffectBase : IEffect
+    {
+        protected string message;
+        protected EffectBase(string message)
+        {
+            this.message = message;
+        }
+        public string Message { get{ return message; } }
+        public abstract void Apply(GameState state);
+        protected void LogMessage(GameState state)
+        {
+            if (!string.IsNullOrEmpty(message))
+            {
+                state.Log.Add(message);
+            }
+        }
+    }
+
+    public abstract class GameEventBase
+    {
+        private ICondition triggerCondition;
+        private List<IEffect> effects;
+        private bool isOneTime;
+        private string eventName;
+        protected GameEventBase(ICondition triggerCondition, List<IEffect> effects, bool isOneTime, string eventName)
+        {
+            this.triggerCondition = triggerCondition;
+            this.effects = effects;
+            this.isOneTime = isOneTime;
+            this.eventName = eventName;
+        }
+        public ICondition TriggerCondition { get { return triggerCondition; } set { triggerCondition = value; } }
+        public List<IEffect> Effects { get { return effects; } set { effects = value; } }
+        public bool IsOneTime { get { return isOneTime; } set { isOneTime = value; } }
+        public string EventName { get { return eventName; } set { eventName = value; } }
+        public virtual bool CheckAndApply(GameState state)
+        {
+            if (TriggerCondition.IsMet(state))
+            {
+                foreach (var effect in Effects)
+                    effect.Apply(state);
+                return IsOneTime;
+            }
+            return false;
+        }
+    }
+
+    public class OnEnterLocationEvent : GameEventBase
+    {
+        public OnEnterLocationEvent(ICondition condition, List<IEffect> effects, bool isOneTime, string name)
+            : base(condition, effects, isOneTime, name) { }
+    }
+
+    public class OnTurnEvent : GameEventBase
+    {
+        public OnTurnEvent(ICondition condition, List<IEffect> effects, bool isOneTime, string name)
+            : base(condition, effects, isOneTime, name) { }
+    }
+
+    #endregion
+    #region State & Core
+
+    public class GameState // состояние игры
     {
         private int health;
         private bool isGameOver;
@@ -9,6 +141,8 @@ namespace Project
         private Dictionary<string, bool> worldFlags;
         private List<string> log;
         private int turnCount;
+        private List<Quest> quests;
+        public Action<Location> OnLocationChanged { get; set; } // ссылка на механизм смены локации (заполняется в Game)
         public GameState(int health, int turnCount)
         {
             this.health = health;
@@ -17,11 +151,12 @@ namespace Project
             this.worldFlags = new Dictionary<string, bool>();
             this.log = new List<string>();
             this.turnCount = turnCount;
+            this.quests = new List<Quest>();
         }
         public int Health
         {
             get { return health; }
-            set { health = value; }
+            set { health = value; if (health < 0) health = 0; }
         }
 
         public bool IsGameOver
@@ -53,7 +188,11 @@ namespace Project
             get { return turnCount; }
             set { turnCount = value; }
         }
-
+        public List<Quest> Quests
+        {
+            get { return quests; }
+            set { quests = value; }
+        }
         public void AddItem(string item)
         {
             if (!inventory.Contains(item))
@@ -82,8 +221,17 @@ namespace Project
 
         public void Damage(int value)
         {
-            health -= value;
-            if (health < 0) health = 0;
+            Health -= value;
+            if (Health <= 0)
+            {
+                Health = 0;
+                IsGameOver = true;
+            }
+        }
+        public void Heal(int value)
+        {
+            Health += value;
+            if (Health > 100) Health = 100;
         }
 
         public void AddLog(string message)
@@ -98,7 +246,7 @@ namespace Project
         }
     }
 
-    public class Game // Основной класс игры
+    public class Game // основной класс игры
     {
         private GameState state;
         private Dictionary<string, Location> locations;
@@ -110,6 +258,7 @@ namespace Project
             this.currentLocation = currentLocation;
             this.locations = new Dictionary<string, Location>();
             this.commands = new Dictionary<string, ICommand>();
+            this.state.OnLocationChanged = HandleLocationEnter;
         }
         public GameState State
         {
@@ -132,58 +281,237 @@ namespace Project
             get { return commands; }
             set { commands = value; }
         }
-    //     private void InitWorld()
-    //     {
-    //     var hall = new Location("Hall", "Вы в холле.");
-    //     var storage = new Location("Storage", "Склад.");
+        private void InitWorld()
+        {
+            // создание локаций
+            var hall = new Location("Hall", "Вы очнулись в жилом отсеке станции. Воздух спёрт, свет мигает.");
+            var storage = new Location("Storage", "Тёмный склад. Везде стеллажи и коробки. Пахнет машинным маслом.");
+            var darkCorridor = new Location("DarkCorridor", "Длинный коридор без освещения. Холодно и тихо.");
+            var generatorRoom = new Location("GeneratorRoom", "Комната резервного генератора. В центре стоит распределительный щит.");
+            var exit = new Location("Exit", "Гермодверь в ангар. Спасательный челнок готов к отстыковке.");
 
-    //     hall.Exits["storage"] = "Storage";
+            // начальные выходы
+            hall.Exits["south"] = "Storage";
+            darkCorridor.Exits["east"] = "GeneratorRoom";
 
-    //     hall.Interactables.Add(new Chest("Шкаф", new List<IEffect>
-    //     {
-    //         new AddItemEffect("Torch")
-    //     }));
+            // объекты
+            var hallLocker = new Chest("Шкафчик", 
+                new List<IEffect> { new AddItemEffect("Torch", "Вы нашли фонарик в шкафчике.") });
+            hall.Interactables.Add(hallLocker);
 
-    //     locations["Hall"] = hall;
-    //     locations["Storage"] = storage;
+            var storageChest = new Chest("Ящик с инструментами", 
+                new List<IEffect> { new AddItemEffect("Wrench", "Вы нашли гаечный ключ.") });
+            storage.Interactables.Add(storageChest);
 
-    //     currentLocation = hall;
-    // }
+            var storageShelf = new Terminal("Стеллаж", 
+                new Dictionary<string, (ICondition, List<IEffect>)>
+                {
+                    { "search", (new HasItemCondition("Key"), new List<IEffect>()) } // пример терминала
+                });
+            
+            var storageKeyBox = new Chest("Стеллаж", 
+                new List<IEffect> { new AddItemEffect("Key", "Вы нашли ключ-карту от двери.") });
+            storage.Interactables.Add(storageKeyBox);
 
-    // private void InitCommands()
-    // {
-    //     commands["look"] = new LookCommand();
-    //     commands["go"] = new GoCommand();
-    //     commands["interact"] = new InteractCommand();
-    //     commands["inv"] = new InventoryCommand();
-    // }
+            // ловушка в Storage
+            var trap = new Trap("Растяжка", new FlagCondition("TrapArmed"), 
+                new List<IEffect> 
+                { 
+                    new DamageEffect(15, "Вы задели растяжку! Осколок вонзился в ногу."),
+                    new SetFlagEffect("TrapArmed", false, "Ловушка сработала и больше не опасна.")
+                });
+            // инициализация флага ловушки
+            state.SetFlag("TrapArmed", true);
+            storage.Interactables.Add(trap);
 
-    // public void Run()
-    // {
-    //     while (true)
-    //     {
-    //         state.NextTurn();
+            // тёмный коридор: событие при входе
+            darkCorridor.LocationEvents.Add(new OnEnterLocationEvent(
+                new NotCondition(new HasItemCondition("Torch")),
+                new List<IEffect> { new DamageEffect(20, "Тьма обжигает кожу. Вы теряете здоровье, пробираясь вслепую.") },
+                false, "DarknessDamage"
+            ));
+            // предохранитель лежит в коридоре (контейнер)
+            var darkCorridorFloor = new Chest("Пол в коридоре", 
+                new List<IEffect> { new AddItemEffect("Fuse", "Вы подобрали предохранитель.") });
+            darkCorridor.Interactables.Add(darkCorridorFloor);
 
-    //         foreach (var e in currentLocation.Events)
-    //             e.Check(state);
+            // дверь из Hall в DarkCorridor (изначально закрыта, откроется ключом)
+            var mainDoor = new Door("Гермодверь", new HasItemCondition("Key"),
+                new List<IEffect> { new AddExitEffect(hall, "south", "DarkCorridor", "Дверь с шипением открылась. Путь в тёмный коридор свободен.") },
+                new List<IEffect> { new LogEffect("Дверь заблокирована. Требуется ключ-карта.") });
+            hall.Interactables.Add(mainDoor);
 
-    //         Console.Write("> ");
-    //         var input = Console.ReadLine();
-    //         var parts = input.Split(' ', 2);
+            // генератор (щит)
+            var generatorPanel = new Chest("Распределительный щит",
+                new AndCondition(new HasItemCondition("Fuse"), new HasItemCondition("Wrench")),
+                new List<IEffect>
+                {
+                    new RemoveItemEffect("Fuse"),
+                    new RemoveItemEffect("Wrench"),
+                    new SetFlagEffect("GeneratorOn", true, "Вы вставили предохранитель и затянули болты. Генератор ожил!"),
+                    new LogEffect("Питание восстановлено. Гермодвери разблокированы."),
+                    new AddExitEffect(exit, "west", "Exit", "Свет загорелся, и дверь шлюза отъехала в сторону.")
+                },
+                new List<IEffect> { new LogEffect("Для запуска нужен предохранитель и гаечный ключ.") });
+            generatorRoom.Interactables.Add(generatorPanel);
 
-    //         var cmd = parts[0];
-    //         var args = parts.Length > 1 ? parts[1] : "";
+            // аптечка в GeneratorRoom
+            generatorRoom.Interactables.Add(new Chest("Аптечка на стене", 
+                new List<IEffect> { new HealEffect(40, "Вы использовали аптечку. Стало легче дышать.") }));
 
-    //         if (commands.ContainsKey(cmd))
-    //             commands[cmd].Execute(this, args);
-    //         else
-    //             Console.WriteLine("Неизвестная команда");
-    //     }
-    // }
+            // финальная локация
+            var exitTerminal = new Terminal("Пульт шлюза",
+                new Dictionary<string, (ICondition, List<IEffect>)>
+                {
+                    { "activate", (new FlagCondition("GeneratorOn"), new List<IEffect> { 
+                        new ChangeLocationEffect("Credits", "Шлюз открыт. Вы садитесь в челнок. Спасение близко!"),
+                        new SetFlagEffect("GameWon", true) 
+                    })}
+                });
+            exit.Interactables.Add(exitTerminal);
+            exit.LocationEvents.Add(new OnEnterLocationEvent(
+                new FlagCondition("GameWon"),
+                new List<IEffect> { new LogEffect("Поздравляем! Вы выбрались со станции!") },
+                true, "Victory"
+            ));
 
+            // регистрация локаций
+            locations.Add("Hall", hall);
+            locations.Add("Storage", storage);
+            locations.Add("DarkCorridor", darkCorridor);
+            locations.Add("GeneratorRoom", generatorRoom);
+            locations.Add("Exit", exit);
+            locations.Add("Credits", new Location("Credits", "Титры. Конец.")); // Фиктивная локация для финала
+
+            currentLocation = hall;
+
+            // инициализация квестов
+            state.Quests.Add(CreatePowerQuest());
+            state.Quests.Add(CreateEscapeQuest());
+        }
+
+        private void InitCommands()
+        {
+            commands["help"] = new HelpCommand();
+            commands["look"] = new LookCommand();
+            commands["go"] = new GoCommand();
+            commands["interact"] = new InteractCommand();
+            commands["inv"] = new InventoryCommand();
+            commands["status"] = new StatusCommand();
+        }
+
+        public void Run()
+        {
+            while (true)
+            {
+                InitWorld();
+            InitCommands();
+
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine("=== STATION PROGER-67 ===");
+            Console.ResetColor();
+            Console.WriteLine("Введите 'help' для списка команд.\n");
+
+            // Начальные события стартовой локации
+            HandleLocationEnter(currentLocation);
+
+            while (!state.IsGameOver && currentLocation.Name != "Credits")
+            {
+                state.NextTurn();
+
+                // проверка событий каждого хода
+                foreach (var evt in currentLocation.LocationEvents)
+                {
+                    if (evt is OnTurnEvent turnEvent)
+                        turnEvent.CheckAndApply(state);
+                }
+                CheckQuestUpdates();
+
+                Console.Write("\n> ");
+                var input = Console.ReadLine()?.Trim().ToLower() ?? "";
+                if (string.IsNullOrEmpty(input)) continue;
+
+                var parts = input.Split(new[] { ' ' }, 2);
+                var cmdName = parts[0];
+                var args = parts.Length > 1 ? parts[1] : "";
+
+                if (commands.ContainsKey(cmdName))
+                {
+                    commands[cmdName].Execute(this, args);
+                }
+                else
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine("Неизвестная команда. Введите 'help'.");
+                    Console.ResetColor();
+                }
+
+                if (state.IsGameOver && currentLocation.Name != "Credits")
+                {
+                    Console.ForegroundColor = ConsoleColor.DarkRed;
+                    Console.WriteLine("\n💀 ВАШ СИГНАЛ ЖИЗНИ УГАС. ИГРА ОКОНЧЕНА.");
+                    Console.ResetColor();
+                    break;
+                }
+            }
+
+            if (currentLocation.Name == "Credits" && state.GetFlag("GameWon"))
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("\n🎉 ВЫЖИВАНИЕ ЗАВЕРШЕНО УСПЕШНО. СПАСИБО ЗА ИГРУ!");
+                Console.ResetColor();
+            }
+            }
+        }
+        private void HandleLocationEnter(Location location)
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"\n📍 {location.Name}");
+            Console.ResetColor();
+            Console.WriteLine(location.Description);
+
+            // события при входе
+            foreach (var evt in location.LocationEvents)
+            {
+                if (evt is OnEnterLocationEvent enterEvent)
+                {
+                    enterEvent.CheckAndApply(state);
+                }
+            }
+            CheckQuestUpdates();
+        }
+
+        private void CheckQuestUpdates()
+        {
+            foreach (var quest in state.Quests)
+            {
+                quest.Check(state);
+            }
+        }
+        // квесты
+        private Quest CreatePowerQuest()
+        {
+            var q = new Quest("Аварийное питание", "Запустить резервный генератор.");
+            q.AddStage("Найти гаечный ключ", new HasItemCondition("Wrench"), "Гаечный ключ найден! Теперь можно открутить панель.");
+            q.AddStage("Найти предохранитель", new HasItemCondition("Fuse"), "Предохранитель цел! Генератор почти готов.");
+            q.AddStage("Включить генератор", new FlagCondition("GeneratorOn"), "Гул генератора разносится по станции. Питание восстановлено!");
+            return q;
+        }
+
+        private Quest CreateEscapeQuest()
+        {
+            var q = new Quest("Последний рубеж", "Добраться до аварийного выхода.");
+            // Активируется только после включения генератора
+            q.AddStage("Пройти тёмный коридор", 
+                new AndCondition(new FlagCondition("GeneratorOn"), new HasItemCondition("Torch")), 
+                "Коридор освещён. Вы добрались до генераторной.");
+            q.AddStage("Открыть шлюз", new FlagCondition("GeneratorOn"), "Шлюз разблокирован.");
+            q.AddStage("Достичь выхода", new FlagCondition("GameWon"), "Вы выбрались! КВЕСТ ВЫПОЛНЕН.");
+            return q;
+        }
     }
 
-    public class Location // Локация
+    public class Location // локация
     {
         private string name;
         private string description;
@@ -198,171 +526,22 @@ namespace Project
             this.locationEvents = new List<GameEventBase>();
             this.exits = exits ?? new Dictionary<string, string>();
         }
-        public string Name
-        {
-            get { return name; }
-            set { name = value; }
-        }
-
-        public string Description
-        {
-            get { return description; }
-            set { description = value; }
-        }
-
-        public List<IInteractable> Interactables
-        {
-            get { return interactables; }
-            set { interactables = value; }
-        }
-
-        public List<GameEventBase> LocationEvents
-        {
-            get { return locationEvents; }
-            set { locationEvents = value; }
-        }
-
-        public Dictionary<string, string> Exits
-        {
-            get { return exits; }
-            set { exits = value; }
-        }
+        public string Name { get { return name; } set { name = value; } }
+        public string Description { get { return description; } set { description = value; } }
+        public List<IInteractable> Interactables { get { return interactables; } set { interactables = value; } }
+        public List<GameEventBase> LocationEvents { get { return locationEvents; } set { locationEvents = value; } }
+        public Dictionary<string, string> Exits { get { return exits; } set { exits = value; } }
     }
 
     public class Player
     {
         private GameState state;
-        public Player(GameState state)
-        {
-            this.state = state;
-        }
+        public Player(GameState state) { this.state = state; }
         public int Health => state.Health;
     }
     
-    
-    public interface ICommand // Интерфейс команды пользователя
-    {
-        void Execute(Game game, string args);
-        // game - объект игры для доступа к состоянию и локациям
-        // args - аргументы команды (например, "chest" для команды interact)
-    }
-
-    public interface IInteractable // Интерфейс всех объектов, с которыми можно взаимодействовать в мире
-    {
-        string GetName(); // Уникальный идентификатор объекта (для команд игрока)
-        string GetDescription(); // Описание объекта при осмотре
-        void Interact(GameState state); // Взаимодействие с объектом
-        // state - текущее состояние игры
-    }
-
-    public interface ICondition // Интерфейс условия для проверки состояния игры
-    {
-        bool IsMet(GameState state); // Проверить, выполняется ли условие состояния
-    }
-
-    public interface IEffect // Интерфейс эффекта, изменяющего состояние игры
-    {
-        void Aply(GameState state); // Применить эффект к состоянию игры
-    }
-
-    public abstract class CommandBase : ICommand
-    {
-        private string name; // Имя команды
-        private string description; // Описание команды
-        protected CommandBase(string name, string description)
-        {
-            this.name = name;
-            this.description = description;
-        }
-        public string Name { get{ return name; } }
-        public string Description { get{ return description; } }
-        public abstract void Execute(Game game, string args); // Основной метод выполнения команды
-        protected bool IsGameActive(GameState state) // Проверка, что игра не завершена
-        {
-            return state.Health > 0 && !state.IsGameOver;
-        }
-        protected void PrintError(string message)
-        {
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine($"Ошибка: {message}");
-            Console.ResetColor();
-        }
-        protected void PrintSuccess(string message)
-        {
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine(message);
-            Console.ResetColor();
-        }
-    }
-
-    public abstract class ConditionBase
-    {
-        private string description; // Описание условия для отладки (что именно проверяется)
-        protected ConditionBase(string description)
-        {
-            this.description = description;
-        }
-        public string Description { get{ return description; } }
-        public abstract bool IsMet(GameState state); // Проверка выполнения условия
-        public override string ToString()
-        {
-            return $"Condition: {Description}";
-        }
-    }
-
-    public abstract class EffectBase
-    {
-        protected string message; // Сообщение, которое будет выведено при применении эффекта
-        protected EffectBase(string message)
-        {
-            this.message = message;
-        }
-        public string Message { get{ return message; } }
-        public abstract void Apply(GameState state); // Применить эффект
-        protected void LogMessage(GameState state) // Вывод сообщения эффекта (если оно есть)
-        {
-            if (!string.IsNullOrEmpty(message))
-            {
-                state.Log.Add(message);
-                Console.WriteLine(message);
-            }
-        }
-    }
-
-    public abstract class GameEventBase
-    {
-        private ICondition triggerCondition; // Условие срабатывания события
-        private List<IEffect> effects; // Список эффектов, выполняемых при срабатывании
-        private bool isOneTime; // Флаг: удалить событие после первого срабатывания
-        private string eventName; // Название события (для логов)
-        protected GameEventBase(ICondition triggerCondition, List<IEffect> effects, bool isOneTime, string eventName)
-        {
-            this.triggerCondition = triggerCondition;
-            this.effects = effects;
-            this.isOneTime = isOneTime;
-            this.eventName = eventName;
-        }
-        public ICondition TriggerCondition
-        { 
-            get { return triggerCondition; }
-            set { triggerCondition = value; }
-        }
-        public List<IEffect> Effects
-        {
-            get { return effects; }
-            set { effects = value; }
-        }
-        public bool IsOneTime
-        {
-            get { return isOneTime; }
-            set { isOneTime = value; }
-        }
-        public string EventName
-        {
-            get { return eventName; }
-            set { eventName = value; }
-        }
-    }
+    #endregion
+    #region Conditions
 
     public class HasItemCondition : ConditionBase
     {
@@ -389,10 +568,7 @@ namespace Project
         {
             this.value = value;
         }
-        public override bool IsMet(GameState state)
-        {
-            return state.Health < value;
-        }
+        public override bool IsMet(GameState state) => state.Health < value;
     }
     public class AndCondition : ConditionBase
     {
@@ -403,10 +579,7 @@ namespace Project
             this.a = a;
             this.b = b;
         }
-        public override bool IsMet(GameState state)
-        {
-            return a.IsMet(state) && b.IsMet(state);
-        }
+        public override bool IsMet(GameState state) => a.IsMet(state) && b.IsMet(state);
     }
     public class OrCondition : ConditionBase
     {
@@ -417,10 +590,7 @@ namespace Project
             this.a = a;
             this.b = b;
         }
-        public override bool IsMet(GameState state)
-        {
-            return a.IsMet(state) || b.IsMet(state);
-        }
+        public override bool IsMet(GameState state) => a.IsMet(state) || b.IsMet(state);
     }
     public class NotCondition : ConditionBase
     {
@@ -429,70 +599,406 @@ namespace Project
         {
             this.condition = condition;
         }
-        public override bool IsMet(GameState state)
-        {
-            return !condition.IsMet(state);
-        }
+        public override bool IsMet(GameState state) => !condition.IsMet(state);
     }
+
+    #endregion
+    #region Effects
 
     public class AddItemEffect : EffectBase
     {
         private string item;
-        public AddItemEffect(string item) : base("НЕ условие")
-        {
-            this.item = item;
-        }
-        public override void Apply(GameState state)
-        {
-            state.AddItem(item);
-            state.AddLog($"Получен предмет: {item}");
-        }
+        public AddItemEffect(string item, string message = null) : base(message ?? $"Получен предмет: {item}") { this.item = item; }
+        public override void Apply(GameState state) { state.AddItem(item); LogMessage(state); }
     }
-    public class DamageEffect : EffectBase
+    public class RemoveItemEffect : EffectBase
     {
-        private int damage;
-        public DamageEffect(int damage) : base("НЕ условие")
-        {
-            this.damage = damage;
-        }
-        public override void Apply(GameState state)
-        {
-            state.Damage(damage);
-            state.AddLog($"Получен урон: {damage}");
-        }
+        private string item;
+        public RemoveItemEffect(string item, string message = null) : base(message ?? $"Предмет {item} израсходован.") { this.item = item; }
+        public override void Apply(GameState state) { state.RemoveItem(item); LogMessage(state); }
     }
-
     public class SetFlagEffect : EffectBase
     {
         private string key;
         private bool value;
-        public SetFlagEffect(string key, bool value) : base("НЕ условие")
-        {
-            this.key = key;
-            this.value = value;
-        }
-        public override void Apply(GameState state)
-        {
-         state.SetFlag(key, value);
-        }
+        public SetFlagEffect(string key, bool value, string message = null) : base(message) { this.key = key; this.value = value; }
+        public override void Apply(GameState state) { state.SetFlag(key, value); LogMessage(state); }
+    }
+    public class DamageEffect : EffectBase
+    {
+        private int damage;
+        public DamageEffect(int damage, string message = null) : base(message ?? $"Получен урон: {damage}") { this.damage = damage; }
+        public override void Apply(GameState state) { state.Damage(damage); LogMessage(state); }
+    }
+
+    public class HealEffect : EffectBase
+    {
+        private int value;
+        public HealEffect(int value, string message = null) : base(message ?? $"Восстановлено {value} здоровья.") { this.value = value; }
+        public override void Apply(GameState state) { state.Heal(value); LogMessage(state); }
     }
 
     public class LogEffect : EffectBase
     {
         public LogEffect(string message) : base(message) { }
-        public override void Apply(GameState state)
-        {
-            state.AddLog(message);
+        public override void Apply(GameState state) { LogMessage(state); }
+    }
+
+    public class AddExitEffect : EffectBase
+    {
+        private Location targetLocation;
+        private string directionName;
+        private string locationKey;
+        public AddExitEffect(Location loc, string dir, string locKey, string message = null) 
+            : base(message ?? "Открыт новый проход.") 
+        { 
+            this.targetLocation = loc; 
+            this.directionName = dir; 
+            this.locationKey = locKey; 
+        }
+        public override void Apply(GameState state) 
+        { 
+            if (targetLocation != null && !targetLocation.Exits.ContainsKey(directionName))
+                targetLocation.Exits[directionName] = locationKey; 
+            LogMessage(state); 
         }
     }
 
+    public class ChangeLocationEffect : EffectBase
+    {
+        private string targetLocationName;
+        public ChangeLocationEffect(string locationName, string message = null) 
+            : base(message) { this.targetLocationName = locationName; }
+        public override void Apply(GameState state) 
+        { 
+            LogMessage(state);
+            // Передаём управление смене локации через делегат в GameState
+            if (state.OnLocationChanged != null && targetLocationName != "Credits")
+            {
+                // В реальной архитектуре лучше передавать Game, но по ТЗ Effect получает только State.
+                // Здесь мы просто логируем, а Game обработает переход, либо используем внешний контекст.
+                // Для соответствия ТЗ, Game.Run() проверяет флаги/состояние и меняет локацию, 
+                // либо мы временно храним target в state для последующей обработки.
+                // Проще: вызываем OnLocationChanged с заглушкой, а Game сам находит по имени в Dictionary.
+                // Но чтобы строго следовать Apply(GameState), сделаем так:
+                state.SetFlag("__ForceMoveTo", targetLocationName);
+            }
+            else if (targetLocationName == "Credits")
+            {
+                state.SetFlag("GameWon", true);
+            }
+        }
+    }
+    
+    #endregion
+    #region Interactables
+
+    public class Chest : IInteractable
+    {
+        private string name;
+        private List<IEffect> effectsOnOpen;
+        private ICondition openCondition;
+        private bool isOpened;
+
+        public Chest(string name, List<IEffect> effects) : this(name, effects, null) { }
+        public Chest(string name, List<IEffect> effects, ICondition condition)
+        {
+            this.name = name;
+            this.effectsOnOpen = effects;
+            this.openCondition = condition;
+            this.isOpened = false;
+        }
+
+        public string GetName() => name;
+        public string GetDescription() => isOpened ? "Уже открыт и пуст." : "Закрытый контейнер.";
+        public void Interact(GameState state)
+        {
+            if (isOpened)
+            {
+                state.AddLog("Вы уже всё забрали отсюда.");
+                return;
+            }
+            if (openCondition != null && !openCondition.IsMet(state))
+            {
+                state.AddLog("Не хватает необходимых предметов для открытия.");
+                return;
+            }
+
+            foreach (var effect in effectsOnOpen)
+                effect.Apply(state);
+            isOpened = true;
+        }
+    }
+
+    public class Door : IInteractable
+    {
+        private string name;
+        private ICondition openCondition;
+        private List<IEffect> onSuccess;
+        private List<IEffect> onFail;
+
+        public Door(string name, ICondition condition, List<IEffect> success, List<IEffect> fail)
+        {
+            this.name = name;
+            this.openCondition = condition;
+            this.onSuccess = success;
+            this.onFail = fail;
+        }
+
+        public string GetName() => name;
+        public string GetDescription() => "Массивная дверь.";
+        public void Interact(GameState state)
+        {
+            if (openCondition.IsMet(state))
+            {
+                foreach (var eff in onSuccess) eff.Apply(state);
+            }
+            else
+            {
+                foreach (var eff in onFail) eff.Apply(state);
+            }
+        }
+    }
+
+    public class Terminal : IInteractable
+    {
+        private string name;
+        private Dictionary<string, (ICondition Condition, List<IEffect> Effects)> dialogOptions;
+
+        public Terminal(string name, Dictionary<string, (ICondition, List<IEffect>)> options)
+        {
+            this.name = name;
+            this.dialogOptions = options;
+        }
+
+        public string GetName() => name;
+        public string GetDescription() => "Рабочий терминал с мигающим курсором.";
+        public void Interact(GameState state)
+        {
+            // Упрощённая логика терминала: применяет первый подходящий вариант
+            foreach (var kvp in dialogOptions)
+            {
+                if (kvp.Value.Condition.IsMet(state))
+                {
+                    foreach (var eff in kvp.Value.Effects) eff.Apply(state);
+                    state.AddLog($"Терминал принял команду '{kvp.Key}'.");
+                    return;
+                }
+            }
+            state.AddLog("Терминал требует выполнения дополнительных условий.");
+        }
+    }
+
+    public class Trap : IInteractable
+    {
+        private string name;
+        private ICondition triggerCondition;
+        private List<IEffect> trapEffects;
+        private bool isTriggered;
+
+        public Trap(string name, ICondition condition, List<IEffect> effects)
+        {
+            this.name = name;
+            this.triggerCondition = condition;
+            this.trapEffects = effects;
+            this.isTriggered = false;
+        }
+
+        public string GetName() => name;
+        public string GetDescription() => isTriggered ? "Обезвреженная растяжка." : "Осторожно! Натянутая проволока.";
+        public void Interact(GameState state)
+        {
+            if (isTriggered) return;
+            if (triggerCondition.IsMet(state))
+            {
+                foreach (var eff in trapEffects) eff.Apply(state);
+                isTriggered = true;
+            }
+        }
+    }
+
+    #endregion
+    #region Commands
+
+    public class HelpCommand : CommandBase
+    {
+        public HelpCommand() : base("help", "Список команд") { }
+        public override void Execute(Game game, string args)
+        {
+            Console.WriteLine("\n=== ДОСТУПНЫЕ КОМАНДЫ ===");
+            foreach (var cmd in game.Commands.Values)
+                Console.WriteLine($"- {cmd.Name}: {cmd.Description}");
+            Console.WriteLine("=========================");
+        }
+    }
+
+    public class LookCommand : CommandBase
+    {
+        public LookCommand() : base("look", "Осмотр локации") { }
+        public override void Execute(Game game, string args)
+        {
+            Console.WriteLine("\n" + game.CurrentLocation.Description);
+            if (game.CurrentLocation.Interactables.Count > 0)
+            {
+                Console.WriteLine("Объекты:");
+                foreach (var obj in game.CurrentLocation.Interactables)
+                    Console.WriteLine($"- {obj.GetName()}: {obj.GetDescription()}");
+            }
+            if (game.CurrentLocation.Exits.Count > 0)
+            {
+                Console.WriteLine("Выходы:");
+                foreach (var ex in game.CurrentLocation.Exits)
+                    Console.WriteLine($"- {ex.Key} -> {ex.Value}");
+            }
+        }
+    }
+
+    public class GoCommand : CommandBase
+    {
+        public GoCommand() : base("go", "Переход (go <направление>)") { }
+        public override void Execute(Game game, string args)
+        {
+            if (string.IsNullOrEmpty(args)) { PrintError("Укажите направление. Пример: go south"); return; }
+            var dir = args.Trim().ToLower();
+            if (game.CurrentLocation.Exits.TryGetValue(dir, out string targetName))
+            {
+                if (game.Locations.TryGetValue(targetName, out Location target))
+                {
+                    game.CurrentLocation = target;
+                    game.HandleLocationEnter(target);
+                    
+                    // Обработка принудительного перемещения через эффекты
+                    if (game.State.GetFlag("__ForceMoveTo"))
+                    {
+                        game.State.SetFlag("__ForceMoveTo", false);
+                        // Эффект ChangeLocationEffect уже сработал, просто продолжаем
+                    }
+                }
+            }
+            else
+            {
+                PrintError("Туда пройти нельзя.");
+            }
+        }
+    }
+
+    public class InteractCommand : CommandBase
+    {
+        public InteractCommand() : base("interact", "Взаимодействие (interact <объект>)") { }
+        public override void Execute(Game game, string args)
+        {
+            if (string.IsNullOrEmpty(args)) { PrintError("Укажите объект. Пример: interact шкафчик"); return; }
+            var target = args.Trim().ToLower();
+            var obj = game.CurrentLocation.Interactables.FirstOrDefault(o => o.GetName().ToLower().Contains(target));
+            if (obj != null)
+            {
+                obj.Interact(game.State);
+            }
+            else
+            {
+                PrintError("Такого объекта здесь нет.");
+            }
+        }
+    }
+
+    public class InventoryCommand : CommandBase
+    {
+        public InventoryCommand() : base("inv", "Просмотр инвентаря") { }
+        public override void Execute(Game game, string args)
+        {
+            if (game.State.Inventory.Count == 0)
+                Console.WriteLine("Инвентарь пуст.");
+            else
+            {
+                Console.WriteLine("Ваш инвентарь:");
+                foreach (var item in game.State.Inventory)
+                    Console.WriteLine($"- {item}");
+            }
+        }
+    }
+
+    public class StatusCommand : CommandBase
+    {
+        public StatusCommand() : base("status", "Статус игрока") { }
+        public override void Execute(Game game, string args)
+        {
+            Console.WriteLine($"\n❤️ Здоровье: {game.State.Health}/100");
+            Console.WriteLine($"🚶 Ход: {game.State.TurnCount}");
+            if (game.State.Log.Count > 0)
+            {
+                Console.WriteLine("📜 Последние события:");
+                var recent = game.State.Log.Skip(Math.Max(0, game.State.Log.Count - 3)).ToList();
+                foreach (var msg in recent) Console.WriteLine($"  {msg}");
+            }
+        }
+    }
+
+    #endregion
+    #region Quests
+
+    public class QuestStage
+    {
+        public string Name { get; set; }
+        public ICondition Condition { get; set; }
+        public string CompleteMessage { get; set; }
+        public bool IsCompleted { get; set; }
+    }
+
+    public class Quest
+    {
+        public string Name { get; set; }
+        public string Description { get; set; }
+        public bool IsCompleted { get; set; }
+        public List<QuestStage> Stages { get; set; } = new List<QuestStage>();
+
+        public Quest(string name, string description)
+        {
+            Name = name;
+            Description = description;
+        }
+
+        public void AddStage(string name, ICondition condition, string completeMsg)
+        {
+            Stages.Add(new QuestStage { Name = name, Condition = condition, CompleteMessage = completeMsg, IsCompleted = false });
+        }
+
+        public void Check(GameState state)
+        {
+            if (IsCompleted) return;
+
+            foreach (var stage in Stages)
+            {
+                if (!stage.IsCompleted && stage.Condition.IsMet(state))
+                {
+                    stage.IsCompleted = true;
+                    Console.ForegroundColor = ConsoleColor.Cyan;
+                    Console.WriteLine($"\n📌 КВЕСТ '{Name}' ОБНОВЛЁН: Этап '{stage.Name}' выполнен! {stage.CompleteMessage}");
+                    Console.ResetColor();
+                }
+            }
+
+            if (Stages.All(s => s.IsCompleted))
+            {
+                IsCompleted = true;
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine($"\n✅ КВЕСТ '{Name}' ЗАВЕРШЁН!");
+                Console.ResetColor();
+            }
+        }
+    }
+
+    #endregion
 
     
     class Program
     {
         static void Main(string[] args)
         {
-            Console.WriteLine("Привет всем");
+            // только создаём объекты и запускает цикл
+            var gameState = new GameState(100, 0);
+            var startLocation = new Location("Hall", ""); // Временная, перезапишется в InitWorld
+            var game = new Game(gameState, startLocation);
+            game.Run();
         }
     }
 }
