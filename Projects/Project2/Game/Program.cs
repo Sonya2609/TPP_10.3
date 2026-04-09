@@ -312,7 +312,7 @@ namespace Project
 
     public abstract class EffectBase
     {
-        private string message; // Сообщение, которое будет выведено при применении эффекта
+        protected string message; // Сообщение, которое будет выведено при применении эффекта
         protected EffectBase(string message)
         {
             this.message = message;
