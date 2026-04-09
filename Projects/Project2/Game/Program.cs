@@ -522,7 +522,6 @@ namespace Project
         public override void Apply(GameState state)
         {
             LogMessage(state);
-            // Исправлено: используем string-свойство вместо SetFlag, так как флаги принимают только bool
             state.NextLocationName = targetLocationName;
         }
     }
