@@ -140,8 +140,6 @@ namespace Project
         private List<string> log;
         private int turnCount;
         private List<Quest> quests;
-
-        // Свойство для принудительной смены локации через эффекты
         public string NextLocationName { get; set; }
         public Action<Location> OnLocationChanged { get; set; }
 
@@ -204,45 +202,59 @@ namespace Project
 
         private void InitWorld()
         {
-            var hall = new Location("Hall", "Вы очнулись в жилом отсеке станции. Воздух спёрт, свет мигает.");
+            var hall = new Location("Hall", "Вы очнулись в жилом отсеке станции. Воздуха еле хватает, свет мигает.");
             var storage = new Location("Storage", "Тёмный склад. Везде стеллажи и коробки. Пахнет машинным маслом.");
             var darkCorridor = new Location("DarkCorridor", "Длинный коридор без освещения. Холодно и тихо.");
             var generatorRoom = new Location("GeneratorRoom", "Комната резервного генератора. В центре стоит распределительный щит.");
             var exit = new Location("Exit", "Гермодверь в ангар. Спасательный челнок готов к отстыковке.");
 
             hall.Exits["south"] = "Storage";
-            darkCorridor.Exits["east"] = "GeneratorRoom";
+            storage.Exits["north"] = "Hall";
 
-            var hallLocker = new Chest("Шкафчик", new List<IEffect> { new AddItemEffect("Torch", "Вы нашли фонарик в шкафчике.") });
+            darkCorridor.Exits["east"] = "GeneratorRoom";
+            generatorRoom.Exits["west"] = "DarkCorridor";
+
+            // объекты
+            var hallLocker = new Chest("Шкафчик", 
+                new List<IEffect> { new AddItemEffect("Torch", "Вы нашли фонарик в шкафчике.") });
             hall.Interactables.Add(hallLocker);
 
-            var storageChest = new Chest("Ящик с инструментами", new List<IEffect> { new AddItemEffect("Wrench", "Вы нашли гаечный ключ.") });
+            var storageChest = new Chest("Ящик с инструментами", 
+                new List<IEffect> { new AddItemEffect("Wrench", "Вы нашли гаечный ключ.") });
             storage.Interactables.Add(storageChest);
 
-            var storageKeyBox = new Chest("Стеллаж", new List<IEffect> { new AddItemEffect("Key", "Вы нашли ключ-карту от двери.") });
+            var storageKeyBox = new Chest("Стеллаж", 
+                new List<IEffect> { new AddItemEffect("Key", "Вы нашли ключ-карту от двери.") });
             storage.Interactables.Add(storageKeyBox);
 
-            var trap = new Trap("Растяжка", new FlagCondition("TrapArmed"),
-                new List<IEffect> {
+            // ловушка в Storage
+            var trap = new Trap("Растяжка", new FlagCondition("TrapArmed"), 
+                new List<IEffect> { 
                     new DamageEffect(15, "Вы задели растяжку! Осколок вонзился в ногу."),
                     new SetFlagEffect("TrapArmed", false, "Ловушка сработала и больше не опасна.")
                 });
             state.SetFlag("TrapArmed", true);
             storage.Interactables.Add(trap);
 
+            // тёмный коридор: событие при входе
             darkCorridor.LocationEvents.Add(new OnEnterLocationEvent(
                 new NotCondition(new HasItemCondition("Torch")),
                 new List<IEffect> { new DamageEffect(20, "Тьма обжигает кожу. Вы теряете здоровье, пробираясь вслепую.") },
                 false, "DarknessDamage"));
-
-            var darkCorridorFloor = new Chest("Пол в коридоре", new List<IEffect> { new AddItemEffect("Fuse", "Вы подобрали предохранитель.") });
+            var darkCorridorFloor = new Chest("Пол в коридоре", 
+                new List<IEffect> { new AddItemEffect("Fuse", "Вы подобрали предохранитель.") });
             darkCorridor.Interactables.Add(darkCorridorFloor);
 
+            // дверь из Hall в DarkCorridor
             var mainDoor = new Door("Гермодверь", new HasItemCondition("Key"),
-                new List<IEffect> { new AddExitEffect(hall, "south", "DarkCorridor", "Дверь с шипением открылась. Путь в тёмный коридор свободен.") },
+                new List<IEffect> {
+                    new AddExitEffect(hall, "south", "DarkCorridor", "Дверь с шипением открылась. Путь в тёмный коридор свободен."),
+                    new AddExitEffect(darkCorridor, "west", "Hall", "Обратный путь в холл разблокирован.")
+                },
                 new List<IEffect> { new LogEffect("Дверь заблокирована. Требуется ключ-карта.") });
             hall.Interactables.Add(mainDoor);
 
+            // генератор (щит)
             var generatorPanel = new Chest("Распределительный щит",
                 new AndCondition(new HasItemCondition("Fuse"), new HasItemCondition("Wrench")),
                 new List<IEffect> {
@@ -250,21 +262,27 @@ namespace Project
                     new RemoveItemEffect("Wrench"),
                     new SetFlagEffect("GeneratorOn", true, "Вы вставили предохранитель и затянули болты. Генератор ожил!"),
                     new LogEffect("Питание восстановлено. Гермодвери разблокированы."),
-                    new AddExitEffect(exit, "west", "Exit", "Свет загорелся, и дверь шлюза отъехала в сторону.")
+                    new AddExitEffect(generatorRoom, "north", "Exit", "Свет загорелся, и дверь шлюза отъехала в сторону.")
                 },
                 new List<IEffect> { new LogEffect("Для запуска нужен предохранитель и гаечный ключ.") });
             generatorRoom.Interactables.Add(generatorPanel);
 
-            generatorRoom.Interactables.Add(new Chest("Аптечка на стене", new List<IEffect> { new HealEffect(40, "Вы использовали аптечку. Стало легче дышать.") }));
+            // аптечка
+            generatorRoom.Interactables.Add(new Chest("Аптечка на стене", 
+                new List<IEffect> { new HealEffect(40, "Вы использовали аптечку. Стало легче дышать.") }));
 
+            // финальная локация
             var exitTerminal = new Terminal("Пульт шлюза",
                 new Dictionary<string, (ICondition, List<IEffect>)> {
-                    { "activate", (new FlagCondition("GeneratorOn"), new List<IEffect> {
+                    { "activate", (new FlagCondition("GeneratorOn"), new List<IEffect> { 
                         new ChangeLocationEffect("Credits", "Шлюз открыт. Вы садитесь в челнок. Спасение близко!"),
-                        new SetFlagEffect("GameWon", true)
+                        new SetFlagEffect("GameWon", true) 
                     })}
                 });
             exit.Interactables.Add(exitTerminal);
+            
+            exit.Exits["south"] = "GeneratorRoom";
+            
             exit.LocationEvents.Add(new OnEnterLocationEvent(
                 new FlagCondition("GameWon"),
                 new List<IEffect> { new LogEffect("Поздравляем! Вы выбрались со станции!") },
@@ -346,7 +364,7 @@ namespace Project
                 if (state.IsGameOver && currentLocation.Name != "Credits")
                 {
                     Console.ForegroundColor = ConsoleColor.DarkRed;
-                    Console.WriteLine("\n💀 ВАШ СИГНАЛ ЖИЗНИ УГАС. ИГРА ОКОНЧЕНА.");
+                    Console.WriteLine("ВАШ СИГНАЛ ЖИЗНИ УГАС. ИГРА ОКОНЧЕНА.");
                     Console.ResetColor();
                     break;
                 }
@@ -355,7 +373,7 @@ namespace Project
             if (currentLocation.Name == "Credits" && state.GetFlag("GameWon"))
             {
                 Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine("\n🎉 ВЫЖИВАНИЕ ЗАВЕРШЕНО УСПЕШНО. СПАСИБО ЗА ИГРУ!");
+                Console.WriteLine("ВЫЖИВАНИЕ ЗАВЕРШЕНО УСПЕШНО. СПАСИБО ЗА ИГРУ!");
                 Console.ResetColor();
             }
         }
@@ -363,7 +381,7 @@ namespace Project
         public void HandleLocationEnter(Location location)
         {
             Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine($"\n📍 {location.Name}");
+            Console.WriteLine($"{location.Name}");
             Console.ResetColor();
             Console.WriteLine(location.Description);
 
@@ -695,10 +713,10 @@ namespace Project
         public StatusCommand() : base("status", "Статус игрока") { }
         public override void Execute(Game game, string args)
         {
-            Console.WriteLine($"❤️ Здоровье: {game.State.Health}/100");
-            Console.WriteLine($"🚶 Ход: {game.State.TurnCount}");
+            Console.WriteLine($"Здоровье: {game.State.Health}/100");
+            Console.WriteLine($"Ход: {game.State.TurnCount}");
             if (game.State.Log.Count > 0)
-            { Console.WriteLine("📜 Последние события:"); foreach (var msg in game.State.Log.Skip(Math.Max(0, game.State.Log.Count - 3))) Console.WriteLine($"  {msg}"); }
+            { Console.WriteLine("Последние события:"); foreach (var msg in game.State.Log.Skip(Math.Max(0, game.State.Log.Count - 3))) Console.WriteLine($"  {msg}"); }
         }
     }
     #endregion
@@ -732,7 +750,7 @@ namespace Project
                 {
                     stage.IsCompleted = true;
                     Console.ForegroundColor = ConsoleColor.Cyan;
-                    Console.WriteLine($"📌 КВЕСТ '{Name}' ОБНОВЛЁН: Этап '{stage.Name}' выполнен! {stage.CompleteMessage}");
+                    Console.WriteLine($"КВЕСТ '{Name}' ОБНОВЛЁН: Этап '{stage.Name}' выполнен! {stage.CompleteMessage}");
                     Console.ResetColor();
                 }
             }
@@ -740,7 +758,7 @@ namespace Project
             {
                 IsCompleted = true;
                 Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine($"✅ КВЕСТ '{Name}' ЗАВЕРШЁН!");
+                Console.WriteLine($"КВЕСТ '{Name}' ЗАВЕРШЁН!");
                 Console.ResetColor();
             }
         }
