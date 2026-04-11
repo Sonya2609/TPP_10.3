@@ -248,7 +248,7 @@ namespace Project
             // дверь из Hall в DarkCorridor
             var mainDoor = new Door("Гермодверь", new HasItemCondition("Key"),
                 new List<IEffect> {
-                    new AddExitEffect(hall, "south", "DarkCorridor", "Дверь с шипением открылась. Путь в тёмный коридор свободен."),
+                    new AddExitEffect(hall, "south", "DarkCorridor", "Дверь со скрипом открылась. Путь в тёмный коридор свободен."),
                     new AddExitEffect(darkCorridor, "west", "Hall", "Обратный путь в холл разблокирован.")
                 },
                 new List<IEffect> { new LogEffect("Дверь заблокирована. Требуется ключ-карта.") });
